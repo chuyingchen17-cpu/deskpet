@@ -1,0 +1,33 @@
+[package]
+name = "desktop_pet"
+version = "0.1.0"
+description = "Desktop Pet OpenClaw-lite"
+authors = ["codex"]
+edition = "2021"
+
+[lib]
+name = "desktop_pet_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+once_cell = "1"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "chrono", "uuid", "macros"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
+tauri-plugin-notification = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "process"] }
+tokio-cron-scheduler = "0.13"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt", "env-filter"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
