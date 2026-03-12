@@ -235,6 +235,12 @@ export function App() {
         <div
           className="pet-shell"
           data-tauri-drag-region
+          onMouseDown={(event) => {
+            if (event.button !== 0) return;
+            const target = event.target as HTMLElement;
+            if (target.closest('.hover-menu')) return;
+            void getCurrentWindow().startDragging();
+          }}
           onMouseEnter={() => setHovering(true)}
           onMouseLeave={() => setHovering(false)}
         >
