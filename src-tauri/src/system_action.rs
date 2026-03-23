@@ -79,6 +79,7 @@ async fn run_action(action_id: &str, params: &Value) -> anyhow::Result<String> {
     match action_id {
         "open_app" => {
             let app = params.get("app").and_then(|v| v.as_str()).unwrap_or("Safari");
+            validate_app_name(app)?;
             ensure_success(
                 Command::new("open").arg("-a").arg(app).output().await?,
                 "open_app",
@@ -90,11 +91,13 @@ async fn run_action(action_id: &str, params: &Value) -> anyhow::Result<String> {
                 .get("url")
                 .and_then(|v| v.as_str())
                 .unwrap_or("https://www.apple.com");
+            validate_url(url)?;
             ensure_success(Command::new("open").arg(url).output().await?, "open_url")?;
             Ok(format!("opened url: {url}"))
         }
         "switch_app" => {
             let app = params.get("app").and_then(|v| v.as_str()).unwrap_or("Safari");
+            validate_app_name(app)?;
             let script = format!("tell application \"{app}\" to activate");
             ensure_success(
                 Command::new("osascript").arg("-e").arg(script).output().await?,
@@ -107,11 +110,54 @@ async fn run_action(action_id: &str, params: &Value) -> anyhow::Result<String> {
             if script.is_empty() {
                 anyhow::bail!("missing script");
             }
+            validate_script(script)?;
             let output = Command::new("/bin/zsh").arg("-lc").arg(script).output().await?;
             ensure_success(output, "run_script")
         }
         _ => anyhow::bail!("unsupported action: {action_id}"),
     }
+}
+
+fn validate_app_name(app: &str) -> anyhow::Result<()> {
+    if app.is_empty() {
+        anyhow::bail!("app name cannot be empty");
+    }
+    if app.len() > 255 {
+        anyhow::bail!("app name too long");
+    }
+    // Prevent path traversal
+    if app.contains('/') || app.contains("..") {
+        anyhow::bail!("invalid app name: contains path separators");
+    }
+    Ok(())
+}
+
+fn validate_url(url: &str) -> anyhow::Result<()> {
+    if url.is_empty() {
+        anyhow::bail!("url cannot be empty");
+    }
+    if url.len() > 2048 {
+        anyhow::bail!("url too long");
+    }
+    // Basic URL validation
+    if !url.starts_with("http://") && !url.starts_with("https://") && !url.starts_with("file://") {
+        anyhow::bail!("url must start with http://, https://, or file://");
+    }
+    Ok(())
+}
+
+fn validate_script(script: &str) -> anyhow::Result<()> {
+    if script.is_empty() {
+        anyhow::bail!("script cannot be empty");
+    }
+    if script.len() > 10000 {
+        anyhow::bail!("script too long");
+    }
+    // Warn about dangerous patterns (not blocking, just logging)
+    if script.contains("rm -rf") || script.contains("dd if=") {
+        tracing::warn!("script contains potentially dangerous patterns: {}", script);
+    }
+    Ok(())
 }
 
 fn ensure_success(output: std::process::Output, action_id: &str) -> anyhow::Result<String> {

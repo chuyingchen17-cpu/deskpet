@@ -183,7 +183,12 @@ pub async fn start_background_jobs(app: AppHandle) -> anyhow::Result<()> {
     tauri::async_runtime::spawn(async move {
         let _scheduler = scheduler;
         loop {
-            let snapshot = self_talk_flags.read().await.clone();
+            // Clone flags immediately to minimize lock duration
+            let snapshot = {
+                let flags = self_talk_flags.read().await;
+                flags.clone()
+            };
+            
             if let Err(err) = self_talk::maybe_emit(&self_talk_app, &self_talk_pool, &snapshot).await {
                 tracing::warn!("self talk emit failed: {err:#}");
             }

@@ -43,28 +43,45 @@ async fn fire_due_reminders(app: &AppHandle, pool: &SqlitePool) -> anyhow::Resul
     .await?;
 
     for (id, title, due_at) in rows {
-        let _ = app
+        // Show notification
+        if let Err(err) = app
             .notification()
             .builder()
             .title("桌宠提醒")
             .body(&title)
-            .show();
+            .show()
+        {
+            tracing::warn!("failed to show notification for todo {}: {err:#}", id);
+        }
 
-        let _ = app.emit(
+        // Emit event
+        if let Err(err) = app.emit(
             "reminder_triggered",
             serde_json::json!({
                 "todo_id": id,
                 "title": title
             }),
-        );
+        ) {
+            tracing::warn!("failed to emit reminder_triggered event for todo {}: {err:#}", id);
+        }
 
-        insert_log(pool, &id, "triggered", &title, Some(due_at), "scheduler").await?;
+        // Log the reminder
+        if let Err(err) = insert_log(pool, &id, "triggered", &title, Some(due_at), "scheduler").await {
+            tracing::error!("failed to insert reminder log for todo {}: {err:#}", id);
+            continue;
+        }
 
-        sqlx::query("UPDATE todos SET reminder_sent = 1, updated_at = ? WHERE id = ?")
+        // Mark as sent
+        if let Err(err) = sqlx::query("UPDATE todos SET reminder_sent = 1, updated_at = ? WHERE id = ?")
             .bind(Utc::now())
-            .bind(id)
+            .bind(&id)
             .execute(pool)
-            .await?;
+            .await
+        {
+            tracing::error!("failed to mark reminder as sent for todo {}: {err:#}", id);
+        } else {
+            tracing::info!("reminder fired for todo {}: {}", id, title);
+        }
     }
 
     Ok(())

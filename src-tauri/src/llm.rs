@@ -59,6 +59,7 @@ impl LlmClient {
                 .post("https://api.openai.com/v1/chat/completions")
                 .bearer_auth(api_key)
                 .json(&body)
+                .timeout(std::time::Duration::from_secs(30))
                 .send()
                 .await
                 .context("llm request failed")?;

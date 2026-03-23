@@ -1,3 +1,4 @@
+use anyhow::Context;
 use chrono::Utc;
 use sqlx::SqlitePool;
 
@@ -13,23 +14,17 @@ pub async fn handle_chat(pool: &SqlitePool, llm: &LlmClient, req: ChatRequest) -
     .bind(&req.persona_id)
     .fetch_optional(pool)
     .await?
-    .unwrap_or(Persona {
-        id: "default".to_string(),
-        name: "Claw Mini".to_string(),
-        tone: "friendly-pragmatic".to_string(),
-        style_tags: "efficiency,kind,focused".to_string(),
-        prohibited_topics: "illegal,unsafe".to_string(),
-        initiative_level: 60,
-        quiet_hours_start: Some("23:00".to_string()),
-        quiet_hours_end: Some("08:00".to_string()),
-    });
+    .ok_or_else(|| anyhow::anyhow!("persona not found: {}", req.persona_id))?;
 
     let memory_summary = load_memory_summary(pool, &req.session_id).await?;
 
     let reply = llm
         .chat(&persona.name, &persona.tone, &memory_summary, &req.message)
         .await
-        .unwrap_or_else(|_| "我刚才走神了，请再说一次。".to_string());
+        .unwrap_or_else(|err| {
+            tracing::warn!("llm chat failed: {err:#}");
+            "我刚才走神了，请再说一次。".to_string()
+        });
 
     sqlx::query("INSERT INTO chat_messages (id, session_id, role, content, created_at) VALUES (?, ?, ?, ?, ?)")
         .bind(uuid::Uuid::new_v4().to_string())
@@ -72,7 +67,8 @@ async fn load_memory_summary(pool: &SqlitePool, session_id: &str) -> anyhow::Res
     )
     .bind(session_id)
     .fetch_all(pool)
-    .await?;
+    .await
+    .context("failed to load memory summary")?;
 
     if rows.is_empty() {
         return Ok("none".to_string());

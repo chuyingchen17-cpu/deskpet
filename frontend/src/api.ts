@@ -26,14 +26,19 @@ export const api = {
     }),
 
   completeTodo: (id: string) => invoke<void>('todo_complete', { id }),
+  
   updateTodo: (id: string, title?: string, dueAt?: string | null) => {
     const req: Record<string, unknown> = {
-      id,
-      title: title ?? null
+      id
     };
 
+    // Only include title if it's provided
+    if (title !== undefined) {
+      req.title = title;
+    }
+
+    // Handle due_at with explicit clear flag
     if (dueAt === null) {
-      req.due_at = null;
       req.clear_due_at = true;
     } else if (typeof dueAt === 'string') {
       req.due_at = new Date(dueAt).toISOString();
@@ -42,6 +47,7 @@ export const api = {
 
     return invoke<TodoItem>('todo_update', { req });
   },
+  
   deleteTodo: (id: string) => invoke<void>('todo_delete', { id }),
 
   listPersonas: () => invoke<Persona[]>('persona_list'),

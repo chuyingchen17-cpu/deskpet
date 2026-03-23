@@ -1,4 +1,4 @@
-use chrono::{Local, Timelike, Utc};
+use chrono::{Local, NaiveTime, Timelike, Utc};
 use sqlx::SqlitePool;
 use tauri::{AppHandle, Emitter};
 
@@ -9,7 +9,14 @@ pub async fn maybe_emit(app: &AppHandle, pool: &SqlitePool, flags: &RuntimeFlags
         return Ok(());
     }
 
-    if is_quiet_hours() {
+    // Load persona to get quiet hours
+    let persona: Option<(Option<String>, Option<String>)> = sqlx::query_as(
+        "SELECT quiet_hours_start, quiet_hours_end FROM personas WHERE id = 'default' LIMIT 1"
+    )
+    .fetch_optional(pool)
+    .await?;
+
+    if is_quiet_hours(persona) {
         return Ok(());
     }
 
@@ -38,8 +45,27 @@ pub async fn maybe_emit(app: &AppHandle, pool: &SqlitePool, flags: &RuntimeFlags
     Ok(())
 }
 
-fn is_quiet_hours() -> bool {
+fn is_quiet_hours(persona_hours: Option<(Option<String>, Option<String>)>) -> bool {
     let now = Local::now();
+    let current_time = now.time();
+
+    if let Some((Some(start_str), Some(end_str))) = persona_hours {
+        // Parse quiet hours from persona settings
+        if let (Ok(start), Ok(end)) = (
+            NaiveTime::parse_from_str(&start_str, "%H:%M"),
+            NaiveTime::parse_from_str(&end_str, "%H:%M"),
+        ) {
+            if start < end {
+                // Normal case: e.g., 23:00 to 08:00 wraps around midnight
+                return current_time >= start || current_time < end;
+            } else {
+                // Wrapping case: e.g., 08:00 to 23:00
+                return current_time >= start && current_time < end;
+            }
+        }
+    }
+
+    // Fallback to default quiet hours if persona settings are invalid
     let hour = now.hour();
     hour >= 23 || hour < 8
 }
